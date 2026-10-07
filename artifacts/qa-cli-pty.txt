@@ -1,16 +1,16 @@
-^DPID      RSS_KiB    NAME
-10426    1136896    gjc
-41684    547872     node
-34354    410512     Whale Helper (R
-39339    385904     Whale Helper (R
-3177     336800     Whale
-22281    336064     Whale Helper (R
+[1mRamGuard PTY session[0m
+PID      RSS_KiB    NAME
+10426    1137408    gjc
+34354    410576     Whale Helper (R
+39339    384512     Whale Helper (R
+3177     336704     Whale
+22281    336080     Whale Helper (R
 15473    260400     Whale Helper (R
-3195     260016     Whale Helper (R
-63722    225456     Whale Helper (R
-3196     177904     Whale Helper (R
+3195     260064     Whale Helper (R
+63722    225488     Whale Helper (R
+3196     177920     Whale Helper (R
 27884    170656     Whale Helper (R
 3342     169488     Whale Helper (R
-available=284.0 MiB (free=15945 speculative=2228 pageSize=16384)
-[selftest] 76 passed, 0 failed
-[selftest] RESULT: PASS
+3184     167680     Whale Helper
+[32mOK[0m
+available=746.4 MiB (free=45509 speculative=2263 pageSize=16384)
