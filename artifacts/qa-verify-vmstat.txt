@@ -1,6 +1,6 @@
-pair 1: app=672.4 MiB  vm_stat=633.578125 MiB  delta=0.0613
-pair 2: app=588.7 MiB  vm_stat=555.390625 MiB  delta=0.0600
-pair 3: app=360.8 MiB  vm_stat=321.875 MiB  delta=0.1209
-pair 4: app=360.8 MiB  vm_stat=299.03125 MiB  delta=0.2066
-pair 5: app=360.8 MiB  vm_stat=311.578125 MiB  delta=0.1580
-FAIL: parity off by 6.00% even at best pair
+pair 1: app=532.8 MiB  vm_stat=527.09375 MiB  delta=0.0108
+pair 2: app=502.7 MiB  vm_stat=496.359375 MiB  delta=0.0128
+pair 3: app=467.9 MiB  vm_stat=461.296875 MiB  delta=0.0143
+pair 4: app=473.3 MiB  vm_stat=466.9375 MiB  delta=0.0136
+pair 5: app=409.3 MiB  vm_stat=400.03125 MiB  delta=0.0232
+PASS: parity within 5% (best pair delta=0.0108)
