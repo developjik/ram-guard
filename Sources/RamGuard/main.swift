@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import ServiceManagement
 
 // Default = run the menu-bar app. Diagnostics subcommands stay available:
 //   RamGuard once | top [N] | selftest | watch [seconds]
@@ -96,6 +97,21 @@ case "watch":
     Thread.sleep(forTimeInterval: seconds)
     engine.stop()
     print("history events: \(history.count)")
+case "loginitem":
+    let sub = arguments.count > 1 ? arguments[1] : "status"
+    switch sub {
+    case "status":
+        print("SMAppService.mainApp status: \(LoginItemManager.status.rawValue)")
+        print("running from app bundle: \(LoginItemManager.isRunningFromAppBundle)")
+    case "register":
+        do { try LoginItemManager.register(); print("registered: \(LoginItemManager.status.rawValue)") }
+        catch { print("register failed: \(error)"); exit(1) }
+    case "unregister":
+        do { try LoginItemManager.unregister(); print("unregistered: \(LoginItemManager.status.rawValue)") }
+        catch { print("unregister failed: \(error)"); exit(1) }
+    default:
+        print("usage: ramguard loginitem [status|register|unregister]")
+    }
 case "app":
     MainActor.assumeIsolated {
         runApp()

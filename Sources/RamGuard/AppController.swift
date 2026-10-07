@@ -56,7 +56,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         engine.start()
         notifier.requestAuthorization()
-        Log.ui.info("app launched (posture=\(self.settings.posture.rawValue, privacy: .public))")
+        let postureValue = self.settings.posture.rawValue
+        Log.ui.notice("app launched (posture=\(postureValue, privacy: .public), threshold=\(Int(self.settings.thresholdMiB)) MiB)")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
