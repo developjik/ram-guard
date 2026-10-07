@@ -1,0 +1,36 @@
+2026-10-08 01:04:20.534 Df RamGuard[26150:8c402] [dev.ramguard.RamGuard:ui] app launched (posture=observe, threshold=200 MiB)
+2026-10-08 01:04:20.535 Df RamGuard[26150:8c433] [dev.ramguard.RamGuard:ui] notification permission denied — history-only fallback
+2026-10-08 01:04:31.508 Df RamGuard[26150:8c434] [dev.ramguard.RamGuard:watchdog] [observe] would kill bomb pid=26369 rss=1400352KiB
+2026-10-08 01:04:31.520 Df RamGuard[26150:8c402] [dev.ramguard.RamGuard:ui] [observe] would kill bomb pid=26369
+2026-10-08 01:04:45.534 Df RamGuard[26150:8c434] [dev.ramguard.RamGuard:watchdog] [observe] would kill bomb pid=26369 rss=1172720KiB
+2026-10-08 01:04:45.540 Df RamGuard[26150:8c402] [dev.ramguard.RamGuard:ui] [observe] would kill bomb pid=26369
+2026-10-08 01:05:05.535 F  RamGuard[26150:8c434] [dev.ramguard.RamGuard:kill] SIGKILL bomb pid=27021 rss=1391456KiB
+2026-10-08 01:05:05.552 Df RamGuard[26150:8c402] [dev.ramguard.RamGuard:ui] notification skipped (no permission) — recorded in history
+2026-10-08 01:05:25.536 Df RamGuard[26150:8c438] [dev.ramguard.RamGuard:policy] threshold breached (1540 MiB avail) — no candidate
+2026-10-08 01:05:45.534 Df RamGuard[26150:8c438] [dev.ramguard.RamGuard:watchdog] [observe] would kill sleeper pid=27996 rss=1508768KiB
+2026-10-08 01:05:45.542 Df RamGuard[26150:8c402] [dev.ramguard.RamGuard:ui] [observe] would kill sleeper pid=27996
+2026-10-08 01:05:55.530 F  RamGuard[26150:8c434] [dev.ramguard.RamGuard:kill] SIGKILL bomb pid=28108 rss=1326912KiB
+2026-10-08 01:05:55.543 Df RamGuard[26150:8c402] [dev.ramguard.RamGuard:ui] notification skipped (no permission) — recorded in history
+2026-10-08 01:07:05.536 F  RamGuard[26150:8c438] [dev.ramguard.RamGuard:kill] SIGKILL bomb pid=29688 rss=1224720KiB
+2026-10-08 01:07:05.548 Df RamGuard[26150:8c402] [dev.ramguard.RamGuard:ui] notification skipped (no permission) — recorded in history
+2026-10-08 01:08:05.534 F  RamGuard[26150:8c434] [dev.ramguard.RamGuard:kill] SIGKILL sleeper-hot pid=31055 rss=1561296KiB
+2026-10-08 01:08:05.548 Df RamGuard[26150:8c402] [dev.ramguard.RamGuard:ui] notification skipped (no permission) — recorded in history
+2026-10-08 01:09:35.534 F  RamGuard[26150:8c438] [dev.ramguard.RamGuard:kill] SIGKILL sleeper-hot pid=33082 rss=1561568KiB
+2026-10-08 01:09:35.547 Df RamGuard[26150:8c402] [dev.ramguard.RamGuard:ui] notification skipped (no permission) — recorded in history
+2026-10-08 01:10:35.538 Df RamGuard[26150:8c438] [dev.ramguard.RamGuard:watchdog] [observe] would kill sleeper-hot pid=34746 rss=1561376KiB
+2026-10-08 01:10:35.593 Df RamGuard[26150:8c402] [dev.ramguard.RamGuard:ui] [observe] would kill sleeper-hot pid=34746
+2026-10-08 01:10:45.535 F  RamGuard[26150:8c434] [dev.ramguard.RamGuard:kill] SIGKILL sleeper-hot pid=34746 rss=1561376KiB
+2026-10-08 01:10:45.548 Df RamGuard[26150:8c402] [dev.ramguard.RamGuard:ui] notification skipped (no permission) — recorded in history
+2026-10-08 01:10:55.533 Df RamGuard[26150:8c434] [dev.ramguard.RamGuard:watchdog] cooldown suppressed kill of bomb (20s remaining)
+2026-10-08 01:11:05.534 Df RamGuard[26150:8c444] [dev.ramguard.RamGuard:watchdog] cooldown suppressed kill of bomb (10s remaining)
+2026-10-08 01:11:15.533 F  RamGuard[26150:8c444] [dev.ramguard.RamGuard:kill] SIGKILL bomb pid=34878 rss=3914224KiB
+2026-10-08 01:11:15.556 Df RamGuard[26150:8c402] [dev.ramguard.RamGuard:ui] notification skipped (no permission) — recorded in history
+2026-10-08 01:11:46.082 Df RamGuard[36052:9245a] [dev.ramguard.RamGuard:ui] app launched (posture=observe, threshold=200 MiB)
+2026-10-08 01:11:46.083 Df RamGuard[36052:9246d] [dev.ramguard.RamGuard:ui] notification permission denied — history-only fallback
+2026-10-08 01:11:57.060 Df RamGuard[36052:9246d] [dev.ramguard.RamGuard:policy] threshold breached (146 MiB avail) — no candidate
+2026-10-08 01:13:01.088 Df RamGuard[36052:9246d] [dev.ramguard.RamGuard:policy] threshold breached (1422 MiB avail) — no candidate
+2026-10-08 01:13:05.517 Df RamGuard[37591:93451] [dev.ramguard.RamGuard:ui] app launched (posture=armed, threshold=3000 MiB)
+2026-10-08 01:13:05.518 Df RamGuard[37591:93457] [dev.ramguard.RamGuard:ui] notification permission denied — history-only fallback
+2026-10-08 01:13:05.518 Df RamGuard[37591:93458] [dev.ramguard.RamGuard:policy] threshold breached (1619 MiB avail) — no candidate
+2026-10-08 01:13:29.565 Df RamGuard[38567:93bb5] [dev.ramguard.RamGuard:ui] app launched (posture=observe, threshold=1200 MiB)
+2026-10-08 01:13:29.565 Df RamGuard[38567:93bc7] [dev.ramguard.RamGuard:ui] notification permission denied — history-only fallback
