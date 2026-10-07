@@ -118,4 +118,5 @@ case "app":
     }
 default:
     printUsage()
+    exit(64)
 }

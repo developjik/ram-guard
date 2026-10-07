@@ -10,6 +10,7 @@ struct HistoryEvent: Equatable {
         case killFailed = "kill-failed"
         case cooldownSuppressed = "cooldown-suppressed"
         case pathUnresolvable = "path-unresolvable"
+        case readFailed = "read-failed"
     }
 
     let kind: Kind

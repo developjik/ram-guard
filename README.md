@@ -96,7 +96,7 @@ ghostty
 swift build                      # 디버그
 ./scripts/make-app.sh            # Release → dist/RamGuard.app (ad-hoc 서명·검증)
 ./scripts/make-release.sh        # zip까지 (배포용)
-.build/debug/RamGuard selftest   # 내장 단위 스위트 (71 checks)
+.build/debug/RamGuard selftest   # 내장 단위 스위트 (75 checks)
 .build/debug/RamGuard once       # vm_stat 패리티 측정 1회
 ./scripts/test/verify-vmstat.sh  # 측정 교차검증 (±5%)
 ```

@@ -87,6 +87,11 @@ func runSelfTest() -> Never {
         t.check(KillPolicy.reasonIfRejected(snap(path: "/Users/dev/apps/Cursor.app/Contents/MacOS/Cursor", name: "Cursor Helper (GPU)"), config: config) == .excluded, "exclusion substring matches")
         t.check(KillPolicy.reasonIfRejected(snap(path: "/Users/dev/bin/xd", name: "MYCURSORD"), config: config) == .excluded, "exclusion case-insensitive")
         t.check(KillPolicy.reasonIfRejected(snap(path: "/Users/dev/bin/bun", name: "bun"), config: config) == nil, "unrelated name passes")
+        // P2 regression: long exclusion patterns must match the FULL
+        // executable file name when pbi_comm truncates below the pattern.
+        let longConfig = KillPolicyConfig(ownPID: 100, ownBundlePath: "/Applications/RamGuard.app", ownUID: 501, exclusions: ["Chrome Helper (Renderer)"])
+        t.check(KillPolicy.reasonIfRejected(snap(path: "/Applications/Google Chrome.app/Contents/MacOS/Chrome Helper (Renderer).app/Contents/MacOS/Chrome Helper (Renderer)", name: "Chrome Helper (R"), config: longConfig) == .excluded, "long pattern matches via full path file name")
+        t.check(KillPolicy.reasonIfRejected(snap(path: "/Users/dev/bin/bomb", name: "bomb"), config: longConfig) == nil, "long pattern does not over-match")
         t.check(KillPolicy.reasonIfRejected(snap(rssKiB: 9_999_999, path: nil), config: config) == .pathUnresolvable, "unresolvable path fail-safe")
     }
     t.run("policy.eligible-sorted") { t in

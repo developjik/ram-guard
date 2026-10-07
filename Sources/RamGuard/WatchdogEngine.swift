@@ -95,7 +95,7 @@ final class WatchdogEngine {
         } catch {
             let message = "memory read failed: \(error)"
             Log.watchdog.error("\(message, privacy: .public)")
-            history.append(HistoryEvent(kind: .noCandidate, pid: nil, name: nil, rssKiB: nil, reason: message, timestamp: now))
+            history.append(HistoryEvent(kind: .readFailed, pid: nil, name: nil, rssKiB: nil, reason: message, timestamp: now))
             onEvent?(.readFailed(message))
             return
         }

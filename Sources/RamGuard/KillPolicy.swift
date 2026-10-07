@@ -77,10 +77,14 @@ struct KillPolicy {
             return .systemPath
         }
         // Exclusions: case-insensitive substring match on the executable name.
+        // pbi_comm is truncated to 16 bytes, so match the full executable file
+        // name (path.lastPathComponent) as well — otherwise long patterns
+        // (e.g. "Chrome Helper (Renderer)") silently fail to protect.
         let lowerName = snap.name.lowercased()
+        let lowerFile = (path as NSString).lastPathComponent.lowercased()
         for entry in config.exclusions {
             let lower = entry.lowercased()
-            if !lower.isEmpty && lowerName.contains(lower) {
+            if !lower.isEmpty && (lowerName.contains(lower) || lowerFile.contains(lower)) {
                 return .excluded
             }
         }
