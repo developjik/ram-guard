@@ -1,0 +1,379 @@
+{
+  "architectReview": {
+    "architectureStatus": "CLEAR",
+    "productStatus": "CLEAR",
+    "codeStatus": "CLEAR",
+    "recommendation": "APPROVE",
+    "evidence": "Boundary architect lane over 3 generations (gen-1 hash 4bca50e0 WATCH/COMMENT with P2+P3 findings -> gen-2 hash c4d91a78 CLEAR after root-cause fixes -> gen-3 hash cde2ed06 CLEAR/APPROVE delta-verified). Architecture: dedicated serial queue owns DispatchSourceTimer (first tick immediate, leeway .never), UI never owns the poll loop, single event sink engine-queue -> MainActor; pure decision core isolated behind injected clocks/DI, mach/proc/kill behind closures; NSLock ring buffer. Non-goals upheld (no SIGTERM, no KeepAlive, no monitoring, single process, session-scope history). Product: AC-1..AC-10 all traced to source + M5 on-device evidence; AC-5 truncation edge fixed at root (path.lastPathComponent dual matching + 2 regression rows). Code: no unsafe shortcuts, selftest 76 checks map 1:1 to the plan's unit list. Option B risks absorbed by make-app.sh per-assembly gates.",
+    "commands": [
+      "architect lane gen-1 subagent RamBoundaryArchitect",
+      "architect lane gen-2 subagent RamArchitectG2",
+      "architect lane gen-3 subagent RamArchitectG3"
+    ],
+    "blockers": []
+  },
+  "executorQa": {
+    "status": "passed",
+    "e2eStatus": "passed",
+    "redTeamStatus": "passed",
+    "evidence": "Red-team lanes: gen-1 (static-compensated, APPROVE), gen-2 (live artifacts verified unforged: selftest 76 = 73 sites + 4x loop; qa-once 427.5 MiB = (22367+4994)*16384/2^20 exact; verify-vmstat pair deltas recomputed correct with 1/64 MiB page granularity; CLI edges match main.swift incl exit 64), gen-3 (v1.0.1 digest 7c810b4b... == local cut, size 115868B, created==updated so no post-publish swap, v1.0.0 fully deleted, local==GitHub byte-identical at HEAD). Leader re-verified the falsifiable residual: shasum -a 256 dist/RamGuard-v1.0.1-arm64.zip == 7c810b4b763160268609da23bb94f00d09ad4fa2322e1d38c8c5d3750d4cb8c0. M5 on-device e2e in G003 ledger: observe would-kill, armed SIGKILL 7s, cooldown countdown 20s->10s then exactly +30s re-kill, top-RSS candidate survives cooldown under sustained breach, excluded bomb survives armed breach, threshold live-apply within one tick, armed restart persistence, SMAppService registered enabled, notification denial fallback exactly once per kill.",
+    "e2eCommands": [
+      ".build/debug/RamGuard selftest",
+      "bash scripts/test/verify-vmstat.sh",
+      "./scripts/make-release.sh 1.0.1 + gh release create v1.0.1",
+      "M5 on-device sequence T-AC1..9 (G003 ledger checkpoint)"
+    ],
+    "redTeamCommands": [
+      "red-team lane gen-1 subagent RamRedTeam",
+      "red-team lane gen-2 subagent RamRedTeamG2",
+      "red-team lane gen-3 subagent RamRedTeamG3"
+    ],
+    "artifactRefs": [
+      {
+        "id": "art-selftest",
+        "kind": "boundary-test-report",
+        "path": "artifacts/qa-selftest.txt",
+        "description": "built-in unit suite live run: 76 passed / 0 failed (floor boundary, cooldown >=30s, coalescer <=30s fixed anchor, pages->MiB byte boundaries, guard matrix, exclusion dual-name matching)"
+      },
+      {
+        "id": "art-vmstat",
+        "kind": "algorithm-test-report",
+        "path": "artifacts/qa-verify-vmstat.txt",
+        "description": "verify-vmstat live parity: 5 bracketed pairs, best within 5% of vm_stat free+speculative"
+      },
+      {
+        "id": "art-release",
+        "kind": "package-release-verify",
+        "path": "artifacts/qa-release-verify.txt",
+        "description": "release zip member verification: arm64-only, Signature=adhoc, LSUIElement=true"
+      },
+      {
+        "id": "art-menubar",
+        "kind": "desktop-screenshot",
+        "path": "artifacts/qa-menubar.png",
+        "description": "live menu-bar capture of the running app (observe icon present)"
+      },
+      {
+        "id": "art-cli",
+        "kind": "cli-edge-report",
+        "path": "artifacts/qa-cli-edges.txt",
+        "description": "CLI argv edges live run: top 0 header-only, top abc default, unknown subcommand usage + exit 64"
+      },
+      {
+        "id": "art-once",
+        "kind": "black-box-measurement",
+        "path": "artifacts/qa-once.txt",
+        "description": "single live available-memory reading with raw page counts (red-team recomputation: exact)"
+      },
+      {
+        "id": "art-replay",
+        "kind": "cli-replay-exempt",
+        "path": "artifacts/qa-cli-replay.json",
+        "description": "CLI surface replay exemption record (compiled Swift binary; PTY fallback)"
+      },
+      {
+        "id": "art-pty",
+        "kind": "cli-pty-transcript",
+        "path": "artifacts/qa-cli-pty.txt",
+        "description": "PTY transcript of live RamGuard CLI run captured via script(1)"
+      },
+      {
+        "id": "art-m5log",
+        "kind": "native-transcript",
+        "path": "artifacts/qa-m5-oslog.txt",
+        "description": "M5 on-device watchdog audit trail (os_log excerpts: would-kill/SIGKILL/cooldown/no-candidate lines with timestamps)"
+      }
+    ],
+    "contractCoverage": [
+      {
+        "id": "cov-ac1",
+        "contractRef": "approved-plan:goal",
+        "obligation": "observe mode records would-kill without terminating",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-m5-live"
+        ],
+        "adversarialCaseRefs": [
+          "adv-observe"
+        ]
+      },
+      {
+        "id": "cov-ac2",
+        "contractRef": "approved-plan:goal",
+        "obligation": "armed mode SIGKILLs the bomb and host survives",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-m5-live"
+        ],
+        "adversarialCaseRefs": [
+          "adv-killchain"
+        ]
+      },
+      {
+        "id": "cov-ac3",
+        "contractRef": "approved-plan:goal",
+        "obligation": "innocent >1GiB process survives via 30s cooldown under sustained pressure",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-m5-live"
+        ],
+        "adversarialCaseRefs": [
+          "adv-killchain"
+        ]
+      },
+      {
+        "id": "cov-ac4",
+        "contractRef": "approved-plan:goal",
+        "obligation": "kill notification at most once per 30s window, history per kill",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-m5-live"
+        ],
+        "adversarialCaseRefs": [
+          "adv-notifperm"
+        ]
+      },
+      {
+        "id": "cov-ac5",
+        "contractRef": "approved-plan:goal",
+        "obligation": "exclusions case-insensitive partial matching, applied on restart",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-selftest"
+        ],
+        "adversarialCaseRefs": [
+          "adv-exclusion-trunc"
+        ]
+      },
+      {
+        "id": "cov-ac6",
+        "contractRef": "approved-plan:goal",
+        "obligation": "threshold adjustable, immediate effect, persisted",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-m5-live"
+        ],
+        "adversarialCaseRefs": [
+          "adv-sanitize"
+        ]
+      },
+      {
+        "id": "cov-ac7",
+        "contractRef": "approved-plan:goal",
+        "obligation": "armed posture persists across restart",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-m5-live"
+        ],
+        "adversarialCaseRefs": [
+          "adv-sanitize"
+        ]
+      },
+      {
+        "id": "cov-ac8",
+        "contractRef": "approved-plan:goal",
+        "obligation": "login autostart via SMAppService, icon 3-state",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-m5-live",
+          "surf-menubar"
+        ],
+        "adversarialCaseRefs": [
+          "adv-sanitize"
+        ]
+      },
+      {
+        "id": "cov-ac9",
+        "contractRef": "approved-plan:goal",
+        "obligation": "self/system/other-user processes never candidates",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-selftest"
+        ],
+        "adversarialCaseRefs": [
+          "adv-path-unresolvable"
+        ]
+      },
+      {
+        "id": "cov-ac10",
+        "contractRef": "approved-plan:goal",
+        "obligation": "GitHub release + README with Gatekeeper procedure and limitations",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-release"
+        ],
+        "adversarialCaseRefs": [
+          "adv-sanitize"
+        ]
+      }
+    ],
+    "surfaceEvidence": [
+      {
+        "id": "surf-selftest",
+        "contractRef": "approved-plan:goal",
+        "surface": "algorithm",
+        "invocation": ".build/debug/RamGuard selftest",
+        "verdict": "passed",
+        "artifactRefs": [
+          "art-selftest",
+          "art-vmstat"
+        ]
+      },
+      {
+        "id": "surf-cli",
+        "contractRef": "approved-plan:goal",
+        "surface": "cli",
+        "invocation": ".build/debug/RamGuard top 0 / top abc / frobnicate / once (live leader run, exit codes captured)",
+        "verdict": "passed",
+        "artifactRefs": [
+          "art-replay",
+          "art-cli",
+          "art-once",
+          "art-pty"
+        ]
+      },
+      {
+        "id": "surf-menubar",
+        "contractRef": "approved-plan:goal",
+        "surface": "desktop",
+        "invocation": "open dist/RamGuard.app + screencapture -x -R0,0,2200,40",
+        "verdict": "passed",
+        "artifactRefs": [
+          "art-menubar"
+        ]
+      },
+      {
+        "id": "surf-release",
+        "contractRef": "approved-plan:goal",
+        "surface": "package",
+        "invocation": "make-release.sh 1.0.1 + zip member verify + shasum == GitHub digest",
+        "verdict": "passed",
+        "artifactRefs": [
+          "art-release"
+        ]
+      },
+      {
+        "id": "surf-m5-live",
+        "contractRef": "approved-plan:goal",
+        "surface": "native",
+        "invocation": "live bomb/sleeper scenarios with os_log audit trail (G003 ledger checkpoint evidence)",
+        "verdict": "passed",
+        "artifactRefs": [
+          "art-m5log",
+          "art-menubar"
+        ]
+      }
+    ],
+    "adversarialCases": [
+      {
+        "id": "adv-observe",
+        "contractRef": "approved-plan:goal",
+        "scenario": "4GiB hot bomb under breached threshold in observe",
+        "expectedBehavior": "would-kill recorded, process alive",
+        "verdict": "passed",
+        "artifactRefs": [
+          "art-selftest"
+        ]
+      },
+      {
+        "id": "adv-killchain",
+        "contractRef": "approved-plan:goal",
+        "scenario": "two >1GiB hot processes, sustained breach, armed: kill intervals and suppression countdown on the 10s tick grid",
+        "expectedBehavior": "second kill >=30s after first (observed exactly +30s: 01:10:45 -> 01:11:15 with 20s/10s countdown logs); candidate present survives the cooldown window",
+        "verdict": "passed",
+        "artifactRefs": [
+          "art-selftest"
+        ]
+      },
+      {
+        "id": "adv-exclusion-trunc",
+        "contractRef": "approved-plan:goal",
+        "scenario": "exclusion pattern longer than 16-byte pbi_comm truncation",
+        "expectedBehavior": "still protected via full executable file name matching (fixed gen-2; regression rows in suite)",
+        "verdict": "passed",
+        "artifactRefs": [
+          "art-selftest"
+        ]
+      },
+      {
+        "id": "adv-notifperm",
+        "contractRef": "approved-plan:goal",
+        "scenario": "notification permission denied",
+        "expectedBehavior": "history fallback, exactly one attempt per kill (observed 4 kills -> 4 fallback lines)",
+        "verdict": "passed",
+        "artifactRefs": [
+          "art-selftest"
+        ]
+      },
+      {
+        "id": "adv-path-unresolvable",
+        "contractRef": "approved-plan:goal",
+        "scenario": "snapshot with unresolvable executable path above the RSS floor",
+        "expectedBehavior": "never a kill candidate; surfaced via rate-limited path-unresolvable log + history event",
+        "verdict": "passed",
+        "artifactRefs": [
+          "art-selftest"
+        ]
+      },
+      {
+        "id": "adv-sanitize",
+        "contractRef": "approved-plan:goal",
+        "scenario": "threshold NaN/0/inf/out-of-bounds via defaults",
+        "expectedBehavior": "sanitized to default 1200 MiB",
+        "verdict": "passed",
+        "artifactRefs": [
+          "art-selftest"
+        ]
+      }
+    ],
+    "blockers": []
+  },
+  "iteration": {
+    "status": "passed",
+    "evidence": "Cohort loop ran 3 generations with monotonically shrinking findings: gen-1 P2 (exclusion truncation) + P3s -> root-cause fixes -> gen-2 verified (CLEAR/passed) but flagged defective published v1.0.0 + README token -> v1.0.1 re-cut from fixed tree, v1.0.0 deleted, README fixed -> gen-3 delta lanes CLEAR/APPROVE + passed, zero blockers, clean join. Remaining items are recorded P3 follow-ups outside v1 scope.",
+    "fullRerun": true,
+    "rerunCommands": [
+      ".build/debug/RamGuard selftest (76/0 after each fix)",
+      "bash scripts/test/verify-vmstat.sh (PASS)",
+      "./scripts/make-release.sh 1.0.1 (verified zip + GitHub digest match)"
+    ],
+    "reviewCohort": {
+      "reviewGeneration": 3,
+      "sourceHash": "sha256:759115802fc0ce1d94504193ab9b6fb4cbece0ad74f6d9a1a412c3578c5ec401",
+      "deltaOnly": true,
+      "joined": true,
+      "lanes": {
+        "cleaner": {
+          "status": "passed",
+          "sourceHash": "sha256:759115802fc0ce1d94504193ab9b6fb4cbece0ad74f6d9a1a412c3578c5ec401",
+          "evidence": "AI SLOP CLEANUP REPORT: leader-run read-only sweep found 1 blocking issue (plan F2 path-unresolvable guard unwired to logging) + 3 advisory (dead pendingSummary, unused import, unused notifier param) — all fixed at root with regression rows and re-swept clean; gen-3 delta (README-only) trivially clean. Zero blocking findings remain.",
+          "blockers": []
+        },
+        "architect": {
+          "status": "CLEAR",
+          "sourceHash": "sha256:759115802fc0ce1d94504193ab9b6fb4cbece0ad74f6d9a1a412c3578c5ec401",
+          "evidence": "gen-3 architect lane (subagent RamArchitectG3): CLEAR/APPROVE, delta verified (README only, v1.0.1 sole release bound to fixed tree, v1.0.0 absent), zero blockers",
+          "blockers": []
+        },
+        "qa": {
+          "status": "passed",
+          "sourceHash": "sha256:759115802fc0ce1d94504193ab9b6fb4cbece0ad74f6d9a1a412c3578c5ec401",
+          "evidence": "gen-3 red-team lane (subagent RamRedTeamG3): passed, zero blockers, published-asset integrity proven (digest/size/timeline)",
+          "blockers": []
+        }
+      },
+      "priorGenerationSourceHash": "sha256:cde2ed0615e0bca3fc3a42f535184459d95e5a400825018afffb287c5e5c9b",
+      "deltaPaths": [
+        "README.md",
+        "artifacts/qa-cli-pty.txt",
+        "artifacts/qa-cli-replay.json"
+      ]
+    },
+    "blockers": []
+  },
+  "criticReview": {
+    "verdict": "OKAY",
+    "evidence": "Terminal critic (subagent RamTerminalCritic): verified brief, spec AC-1..10, plan rev.2, goals.json, ledger (9 events), full diff 610a234..7ee74a2, 16 Swift files, scripts, artifacts; G001..G004 all evidenced against contract; P3 and human follow-ups (reboot verification, notification grant, /Applications re-register) correctly non-blocking; evidence-chain receipts match ledger. Verdict OKAY, empty blockers.",
+    "blockers": []
+  }
+}
