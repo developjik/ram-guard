@@ -1,3 +1,16 @@
 ^DPID      RSS_KiB    NAME
-10426    1121056    gjc
-34354    412112     Whale Helper (R
+10426    1136896    gjc
+41684    547872     node
+34354    410512     Whale Helper (R
+39339    385904     Whale Helper (R
+3177     336800     Whale
+22281    336064     Whale Helper (R
+15473    260400     Whale Helper (R
+3195     260016     Whale Helper (R
+63722    225456     Whale Helper (R
+3196     177904     Whale Helper (R
+27884    170656     Whale Helper (R
+3342     169488     Whale Helper (R
+available=284.0 MiB (free=15945 speculative=2228 pageSize=16384)
+[selftest] 76 passed, 0 failed
+[selftest] RESULT: PASS
