@@ -1,0 +1,2 @@
+[selftest] 76 passed, 0 failed
+[selftest] RESULT: PASS

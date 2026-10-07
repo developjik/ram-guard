@@ -1,0 +1,19 @@
+PID      RSS_KiB    NAME
+PID      RSS_KiB    NAME
+10426    1065488    gjc
+34354    514368     Whale Helper (R
+58713    485248     node
+39339    367072     Whale Helper (R
+22281    336448     Whale Helper (R
+3177     301968     Whale
+3195     257504     Whale Helper (R
+15473    248208     Whale Helper (R
+63722    206192     Whale Helper (R
+27884    176448     Whale Helper (R
+RamGuard
+USAGE:
+  (no args)                    run the menu-bar app
+  ramguard once                print one memory reading (vm_stat parity check)
+  ramguard top [N]             print the N largest-RSS same-user processes
+  ramguard selftest            run the built-in unit suite (M1 gate)
+  ramguard watch [seconds]     run the observe-only engine for N seconds (default 30)

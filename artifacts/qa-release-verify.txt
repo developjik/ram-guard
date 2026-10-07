@@ -1,0 +1,3 @@
+Non-fat file: /tmp/zipcheck/RamGuard.app/Contents/MacOS/RamGuard is architecture: arm64
+Signature=adhoc
+true
