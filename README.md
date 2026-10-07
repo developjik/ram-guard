@@ -61,7 +61,8 @@
 
 `~/.config/ramguard/exclusions.txt` — 한 줄에 프로세스 이름 하나.
 `#`로 시작하는 줄은 주석. **대소문자 무시 부분 매칭**(예: `cursor`는
-"Cursor Helper (GPU)"도 보호). 파일이 없으면 처음 실행 시 템플릿이 자동
+"Cursor Helper (GPU)"도 보호) — 프로세스 이름(16자로 절단됨)과 실행 파일
+이름 양쪽에 대조하므로 긴 패턴도 보호됩니다. 파일이 없으면 처음 실행 시 템플릿이 자동
 생성됩니다. 변경은 **앱 재시작 후 적용**됩니다.
 
 예:
@@ -96,7 +97,7 @@ ghostty
 swift build                      # 디버그
 ./scripts/make-app.sh            # Release → dist/RamGuard.app (ad-hoc 서명·검증)
 ./scripts/make-release.sh        # zip까지 (배포용)
-.build/debug/RamGuard selftest   # 내장 단위 스위트 (75 checks)
+.build/debug/RamGuard selftest   # 내장 단위 스위트 (76 checks)
 .build/debug/RamGuard once       # vm_stat 패리티 측정 1회
 ./scripts/test/verify-vmstat.sh  # 측정 교차검증 (±5%)
 ```
