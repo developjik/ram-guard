@@ -1,5 +1,4 @@
 import AppKit
-import ServiceManagement
 
 /// Menu-bar app bootstrap. `main.swift` routes diagnostics subcommands here
 /// for the real app path.
@@ -46,7 +45,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             reason: "RAM Guard watchdog must keep its 10s poll cadence"
         )
 
-        statusItem = StatusItemController(settings: settings, history: history, notifier: notifier)
+        statusItem = StatusItemController(settings: settings, history: history)
 
         // Single event sink: engine queue -> MainActor UI updates only.
         engine.onEvent = { [weak self] event in

@@ -43,6 +43,7 @@ final class WatchdogEngine {
     private var lastKillAt: Date?
     private var wasBreached = false
     private var wasNoCandidate = false
+    private var wasUnresolvableLogged = false
     /// Called on the engine queue after each tick (single event sink).
     var onEvent: ((Event) -> Void)?
 
@@ -114,6 +115,24 @@ final class WatchdogEngine {
         let policy = policyProvider()
         let snapshots = dependencies.snapshotProcesses()
         let eligible = Self.eligibleCandidates(from: snapshots, policy: policy)
+
+        // Plan F2 fail-safe observability: snapshots whose path cannot be
+        // resolved are never candidates; surface them (rate-limited on state
+        // change) so the guard is auditable, not silent.
+        let unresolvable = snapshots.filter {
+            KillPolicy.reasonIfRejected($0, config: policy.config) == .pathUnresolvable
+                && $0.rssKiB > KillPolicyConfig.rssFloorKiB
+        }
+        if !unresolvable.isEmpty {
+            if !wasUnresolvableLogged {
+                let top = unresolvable.max(by: { $0.rssKiB < $1.rssKiB })!
+                Log.watchdog.notice("path unresolvable — excluded from candidates: \(top.name, privacy: .public) pid=\(top.pid) rss=\(top.rssKiB)KiB (\(unresolvable.count) total)")
+                history.append(HistoryEvent(kind: .pathUnresolvable, pid: top.pid, name: top.name, rssKiB: top.rssKiB, reason: "\(unresolvable.count) snapshot(s) with unresolvable path excluded", timestamp: now))
+                wasUnresolvableLogged = true
+            }
+        } else {
+            wasUnresolvableLogged = false
+        }
 
         guard let top = eligible.first else {
             // Rate-limited (plan F9 discretion): emit no-candidate only on the

@@ -9,7 +9,6 @@ final class KillNotifier {
     private let coalescer = NotificationCoalescer(window: 30)
     private var lock = NSLock()
     private var authorized = false
-    private var pendingSummary: (name: String, count: Int)?
 
     func requestAuthorization() {
         center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
@@ -28,12 +27,10 @@ final class KillNotifier {
         lock.lock()
         let shouldNotify = coalescer.shouldNotify(now: now, state: &coalescerStateStorage)
         if !shouldNotify {
-            pendingSummary?.count += 1
             lock.unlock()
             Log.ui.notice("notification suppressed (30s window) for \(name, privacy: .public)")
             return
         }
-        pendingSummary = (name, 1)
         let authorizedNow = authorized
         lock.unlock()
         guard authorizedNow else {

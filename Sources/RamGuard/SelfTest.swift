@@ -211,6 +211,24 @@ func runSelfTest() -> Never {
         let noCandidateEvents = engine.history.snapshot().filter { $0.kind == .noCandidate }.count
         t.check(noCandidateEvents == 1, "no-candidate deduped across ticks (got \(noCandidateEvents))")
     }
+    t.run("engine.path-unresolvable-guard") { t in
+        // Plan F2: unresolvable-path snapshots above the floor are excluded
+        // from candidacy (fail-safe) and surfaced to history for audit.
+        let ghost = ProcSnapshot(pid: 77, rssKiB: 2_000_000, uid: 501, path: nil, name: "ghost")
+        var killedPids: [pid_t] = []
+        let engine = WatchdogEngine(
+            dependencies: makeDeps(available: 500, snapshots: [ghost],
+                                   killed: { pid, _ in killedPids.append(pid) }, now: { Date() }),
+            policyProvider: { KillPolicy(config: config) },
+            postureProvider: { .armed },
+            thresholdProvider: { 1200 }
+        )
+        engine.tick()
+        t.check(killedPids.isEmpty, "unresolvable-path process never killed")
+        let kinds = engine.history.snapshot().map(\.kind)
+        t.check(kinds.contains(.pathUnresolvable), "path-unresolvable recorded (got \(kinds))")
+        t.check(kinds.contains(.noCandidate), "breach with only unresolvable candidates logs no-candidate")
+    }
     t.run("engine.above-threshold") { t in
         var killedPids: [pid_t] = []
         let engine = WatchdogEngine(

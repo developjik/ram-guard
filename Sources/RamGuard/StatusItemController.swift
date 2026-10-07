@@ -19,7 +19,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let loginItemMenuItem = NSMenuItem()
     private let historySectionItems: [NSMenuItem] = (0..<10).map { _ in NSMenuItem() }
 
-    init(settings: SettingsStore, history: HistoryStore, notifier: KillNotifier) {
+    init(settings: SettingsStore, history: HistoryStore) {
         self.item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.settings = settings
         self.history = history
