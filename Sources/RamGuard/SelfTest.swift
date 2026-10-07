@@ -205,6 +205,11 @@ func runSelfTest() -> Never {
         )
         engine.tick()
         t.check(engine.history.snapshot().first?.kind == .noCandidate, "no-candidate event recorded")
+        // F9 discretion: repeated no-candidate ticks dedupe to a single event.
+        engine.tick()
+        engine.tick()
+        let noCandidateEvents = engine.history.snapshot().filter { $0.kind == .noCandidate }.count
+        t.check(noCandidateEvents == 1, "no-candidate deduped across ticks (got \(noCandidateEvents))")
     }
     t.run("engine.above-threshold") { t in
         var killedPids: [pid_t] = []

@@ -42,6 +42,7 @@ final class WatchdogEngine {
     private var timer: DispatchSourceTimer?
     private var lastKillAt: Date?
     private var wasBreached = false
+    private var wasNoCandidate = false
     /// Called on the engine queue after each tick (single event sink).
     var onEvent: ((Event) -> Void)?
 
@@ -105,6 +106,7 @@ final class WatchdogEngine {
                 Log.watchdog.info("pressure cleared (\(memory.availableMiB, format: .fixed(precision: 0)) MiB available)")
             }
             wasBreached = false
+            wasNoCandidate = false
             return
         }
         wasBreached = true
@@ -114,13 +116,18 @@ final class WatchdogEngine {
         let eligible = Self.eligibleCandidates(from: snapshots, policy: policy)
 
         guard let top = eligible.first else {
-            // Rate-limited: log only on the breach-state transition (and after
-            // any kill), never as 10s spam.
-            Log.policy.notice("threshold breached (\(memory.availableMiB, format: .fixed(precision: 0)) MiB avail) — no candidate")
-            history.append(HistoryEvent(kind: .noCandidate, pid: nil, name: nil, rssKiB: nil, reason: "threshold breached, no eligible candidate", timestamp: now))
-            onEvent?(.noCandidate(availableMiB: memory.availableMiB))
+            // Rate-limited (plan F9 discretion): emit no-candidate only on the
+            // state transition (entering no-candidate, or after a kill), never
+            // as 10s spam.
+            if !wasNoCandidate {
+                Log.policy.notice("threshold breached (\(memory.availableMiB, format: .fixed(precision: 0)) MiB avail) — no candidate")
+                history.append(HistoryEvent(kind: .noCandidate, pid: nil, name: nil, rssKiB: nil, reason: "threshold breached, no eligible candidate", timestamp: now))
+                onEvent?(.noCandidate(availableMiB: memory.availableMiB))
+                wasNoCandidate = true
+            }
             return
         }
+        wasNoCandidate = false
 
         switch posture {
         case .observe:
@@ -145,6 +152,7 @@ final class WatchdogEngine {
                     return
                 }
                 Log.kill.error("kill failed pid=\(candidate.pid) kr=\(kr) — trying next candidate")
+                history.append(HistoryEvent(kind: .killFailed, pid: candidate.pid, name: candidate.name, rssKiB: candidate.rssKiB, reason: "kill() returned kr=\(kr)", timestamp: now))
                 onEvent?(.killFailed(pid: candidate.pid, name: candidate.name, kr: kr))
             }
         }

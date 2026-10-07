@@ -1,15 +1,17 @@
 import Darwin
 import Foundation
 
-// M1 diagnostic entrypoint. The G002 milestone replaces this with the
-// menu-bar app bootstrap; until then RamGuard runs observe-only diagnostics.
+// Default = run the menu-bar app. Diagnostics subcommands stay available:
+//   RamGuard once | top [N] | selftest | watch [seconds]
 
 func printUsage() {
     print("""
-    RamGuard diagnostics (M1)
+    RamGuard
     USAGE:
+      (no args)                    run the menu-bar app
       ramguard once                print one memory reading (vm_stat parity check)
       ramguard top [N]             print the N largest-RSS same-user processes
+      ramguard selftest            run the built-in unit suite (M1 gate)
       ramguard watch [seconds]     run the observe-only engine for N seconds (default 30)
     """)
 }
@@ -18,9 +20,13 @@ func ownBundlePath() -> String? {
     Bundle.main.bundleIdentifier != nil ? Bundle.main.bundlePath : CommandLine.arguments.first
 }
 
-let arguments = CommandLine.arguments
+var arguments = CommandLine.arguments
+let subcommand = arguments.count > 1 ? arguments[1] : "app"
+if subcommand != "app" {
+    arguments.removeFirst() // keep diagnostics argument positions stable
+}
 
-switch arguments.dropFirst().first ?? "watch" {
+switch subcommand {
 case "once":
     do {
         let m = try MemoryPressure.read()
@@ -33,31 +39,36 @@ case "once":
 case "selftest":
     runSelfTest()
 case "top":
-    let limit = Int(arguments.count > 2 ? arguments[2] : "10") ?? 10
+    let limit = Int(arguments.count > 1 ? arguments[1] : "10") ?? 10
     let table = ProcessTable.live()
     let uid = getuid()
     let procs = table.snapshotAll()
         .filter { $0.uid == uid && $0.path != nil }
         .sorted { $0.rssKiB > $1.rssKiB }
         .prefix(limit)
-        for p in procs {
-            let pid = String(p.pid).padding(toLength: 9, withPad: " ", startingAt: 0)
-            let rss = String(p.rssKiB).padding(toLength: 11, withPad: " ", startingAt: 0)
-            print("\(pid)\(rss)\(p.name)")
-        }
+    print("PID      RSS_KiB    NAME")
+    for p in procs {
+        let pid = String(p.pid).padding(toLength: 9, withPad: " ", startingAt: 0)
+        let rss = String(p.rssKiB).padding(toLength: 11, withPad: " ", startingAt: 0)
+        print("\(pid)\(rss)\(p.name)")
+    }
 case "watch":
-    let seconds = Double(arguments.count > 2 ? arguments[2] : "30") ?? 30
+    let seconds = Double(arguments.count > 1 ? arguments[1] : "30") ?? 30
     let settings = SettingsStore()
     let history = HistoryStore()
+    let ownPID = getpid()
+    let ownBundle = ownBundlePath()
+    let ownUID = getuid()
+    let exclusions = ExclusionsStore()
     let engine = WatchdogEngine(
         dependencies: .live(),
         history: history,
         policyProvider: {
             KillPolicy(config: KillPolicyConfig(
-                ownPID: getpid(),
-                ownBundlePath: ownBundlePath(),
-                ownUID: getuid(),
-                exclusions: ExclusionsStore().entries
+                ownPID: ownPID,
+                ownBundlePath: ownBundle,
+                ownUID: ownUID,
+                exclusions: exclusions.entries
             ))
         },
         postureProvider: { .observe },
@@ -85,6 +96,10 @@ case "watch":
     Thread.sleep(forTimeInterval: seconds)
     engine.stop()
     print("history events: \(history.count)")
+case "app":
+    MainActor.assumeIsolated {
+        runApp()
+    }
 default:
     printUsage()
 }
