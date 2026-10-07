@@ -1,0 +1,12 @@
+{
+ "kind": "cli-replay-exempt",
+ "description": "Compiled Swift CLI binary — argv replay runtime only executes pinned Bun commands",
+ "replayExempt": {
+  "reasonCode": "platform_unavailable",
+  "reason": "The argv replay sandbox executes only the pinned Bun runtime; this surface is a compiled arm64 Swift executable that the runtime cannot replay, so a PTY structural fallback transcript is attached and audited.",
+  "approvedBy": "ultragoal leader session 01a11692-53e6-71df-8c7a-d7fd9254acb2",
+  "fallbackArtifactRefs": [
+   "art-pty"
+  ]
+ }
+}
