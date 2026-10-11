@@ -1,237 +1,216 @@
 import AppKit
 
-/// Menu-bar surface: 3-state icon (observe/armed/triggered) + dropdown menu.
-/// All NSStatusItem/NSMenu mutations happen on the main actor (contract).
+/// Menu-bar surface (v2): shield icon + compact available-memory text, and a
+/// custom popover panel instead of the v1 NSMenu. All NSStatusItem/NSPopover
+/// mutations happen on the main actor (contract).
 @MainActor
-final class StatusItemController: NSObject, NSMenuDelegate {
+final class StatusItemController: NSObject, NSPopoverDelegate {
     private let item: NSStatusItem
-    private var settings: SettingsStore
+    private let settings: SettingsStore
     private let history: HistoryStore
+    /// Shared with the engine's policyProvider (class semantics) — panel
+    /// toggles take effect on the next tick without a restart.
+    private let exclusions: ExclusionsStore
+    private let panel: PopoverPanelController
+    private let popover = NSPopover()
+    /// Transient popovers close on an outside click — including the very
+    /// status-item click that toggles. Remember when we closed to swallow the
+    /// immediate re-open.
+    private var lastClosedAt: Date?
 
     private var availableMiB: Double = 0
     private var thresholdMiB: Double = SettingsStore.defaultThresholdMiB
     private var posture: WatchdogPosture = .observe
     private var triggered = false
+    private var lastSwap: SwapUsage?
+    /// Swap-write volume of the last tick; non-trivial values mean the
+    /// system is spilling to disk right now.
+    private var lastSwapoutRate: Double?
+    /// The engine's live breach decision (all three triggers) — the UI band
+    /// mirrors it so a combined-headroom or thrash breach shows red.
+    private var lastBreached = false
+    /// Most recent would-kill/kill target, for naming it in the status line.
+    /// Cleared once pressure returns to the normal band (stale-event guard).
+    private var lastEventName: String?
+    private var lastEventWasKill = false
+    /// Available-memory samples, one per engine tick (~10 s), oldest first.
+    /// Feeds the hero card's sparkline; 60 samples ≈ 10 minutes of trend.
+    private var availabilityHistory: [Double] = []
+    private static let historySampleLimit = 60
 
-    private let availMenuItem = NSMenuItem()
-    private let postureMenuItem = NSMenuItem()
-    private let thresholdHeaderItem = NSMenuItem()
-    private let loginItemMenuItem = NSMenuItem()
-    private let historySectionItems: [NSMenuItem] = (0..<10).map { _ in NSMenuItem() }
+    private static let totalRamMiB: Double = Double(ProcessInfo.processInfo.physicalMemory) / 1_048_576
 
-    init(settings: SettingsStore, history: HistoryStore) {
+    /// Wired by AppController — opens the onboarding window.
+    var showWelcome: (() -> Void)?
+    /// Wired by AppController — opens the full-history window.
+    var showHistory: (() -> Void)?
+
+    init(settings: SettingsStore, history: HistoryStore, exclusions: ExclusionsStore) {
         self.item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.settings = settings
         self.history = history
+        self.exclusions = exclusions
+        self.panel = PopoverPanelController(settings: settings, history: history, exclusions: exclusions)
         super.init()
 
-        let menu = NSMenu()
-        menu.delegate = self
-        availMenuItem.isEnabled = false
-        menu.addItem(availMenuItem)
-        menu.addItem(.separator())
+        popover.contentViewController = panel
+        popover.behavior = .transient
+        popover.delegate = self
 
-        postureMenuItem.action = #selector(togglePosture)
-        postureMenuItem.target = self
-        menu.addItem(postureMenuItem)
-        menu.addItem(.separator())
+        panel.onPostureChanged = { [weak self] in self?.render() }
+        panel.onThresholdChanged = { [weak self] in self?.render() }
+        panel.onExclusionsChanged = { [weak self] in self?.render() }
+        panel.showWelcome = { [weak self] in self?.showWelcome?() }
+        panel.showHistory = { [weak self] in self?.showHistory?() }
 
-        thresholdHeaderItem.isEnabled = false
-        menu.addItem(thresholdHeaderItem)
-        for preset in [512.0, 800, 1200, 1600, 2048, 3072, 4096] {
-            let m = NSMenuItem(title: "\(Int(preset)) MiB", action: #selector(setThreshold(_:)), keyEquivalent: "")
-            m.target = self
-            m.representedObject = preset
-            m.indentationLevel = 1
-            menu.addItem(m)
-        }
-        let up = NSMenuItem(title: "+100 MiB", action: #selector(stepThreshold(_:)), keyEquivalent: "+")
-        up.target = self
-        up.indentationLevel = 1
-        up.representedObject = 100.0
-        let down = NSMenuItem(title: "−100 MiB", action: #selector(stepThreshold(_:)), keyEquivalent: "-")
-        down.target = self
-        down.indentationLevel = 1
-        down.representedObject = -100.0
-        menu.addItem(up)
-        menu.addItem(down)
-        menu.addItem(.separator())
-
-        let exclusions = NSMenuItem(title: "제외 목록 파일 열기", action: #selector(openExclusions), keyEquivalent: "")
-        exclusions.target = self
-        menu.addItem(exclusions)
-
-        loginItemMenuItem.action = #selector(toggleLoginItem)
-        loginItemMenuItem.target = self
-        menu.addItem(loginItemMenuItem)
-        menu.addItem(.separator())
-
-        for h in historySectionItems {
-            h.isEnabled = false
-            menu.addItem(h)
-        }
-        menu.addItem(.separator())
-        let quit = NSMenuItem(title: "종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        menu.addItem(quit)
-
-        item.menu = menu
-        refreshStaticItems()
+        item.button?.action = #selector(togglePopover)
+        item.button?.target = self
         render()
     }
 
     // MARK: - Updates (called from the AppController event sink)
 
-    func update(availableMiB: Double?, thresholdMiB: Double, posture: WatchdogPosture, triggered: Bool, wouldKill: ProcSnapshot? = nil) {
-        if let available = availableMiB { self.availableMiB = available }
+    func update(availableMiB: Double?, thresholdMiB: Double, posture: WatchdogPosture, triggered: Bool, wouldKill: ProcSnapshot? = nil, killed: ProcSnapshot? = nil, swap: SwapUsage? = nil, swapoutMiBPerTick: Double? = nil, breached: Bool = false) {
+        if let available = availableMiB {
+            self.availableMiB = available
+            availabilityHistory.append(available)
+            if availabilityHistory.count > Self.historySampleLimit {
+                availabilityHistory.removeFirst(availabilityHistory.count - Self.historySampleLimit)
+            }
+        }
         self.thresholdMiB = thresholdMiB
         self.posture = posture
         self.triggered = triggered
+        self.lastSwap = swap
+        if let rate = swapoutMiBPerTick { lastSwapoutRate = rate }
+        self.lastBreached = breached
         if let snap = wouldKill {
+            lastEventName = snap.name
+            lastEventWasKill = false
             Log.ui.notice("[observe] would kill \(snap.name, privacy: .public) pid=\(snap.pid)")
         }
-        refreshStaticItems()
+        if let snap = killed {
+            lastEventName = snap.name
+            lastEventWasKill = true
+        }
+        // Stale-event guard: once pressure is comfortably clear, drop the
+        // remembered event so a future breach never cites an old victim.
+        if let available = availableMiB,
+           StatusLine.band(availableMiB: available, thresholdMiB: thresholdMiB,
+                           swapHeadroomMiB: lastSwap?.headroomMiB, engineBreached: lastBreached,
+                           swapFloorMiB: settings.swapHeadroomFloorMiB) == .normal {
+            lastEventName = nil
+            lastEventWasKill = false
+        }
+        applyToPanel()
         render()
     }
 
     func refreshHistory() {
-        refreshStaticItems()
+        applyToPanel()
         render()
     }
 
-    // MARK: - Rendering
+    private func applyToPanel() {
+        panel.apply(state: PopoverPanelController.PanelState(
+            availableMiB: availableMiB,
+            thresholdMiB: thresholdMiB,
+            posture: posture,
+            triggered: triggered,
+            lastEventName: lastEventName,
+            lastEventWasKill: lastEventWasKill,
+            swap: lastSwap,
+            swapoutMiBPerTick: lastSwapoutRate,
+            breached: lastBreached,
+            history: availabilityHistory
+        ))
+    }
+
+    // MARK: - Menu bar rendering
 
     private func render() {
         let button = item.button
+        let tint: NSColor?
         switch posture {
         case .observe:
-            button?.image = NSImage(systemSymbolName: "shield", accessibilityDescription: "observe")
-            button?.contentTintColor = .secondaryLabelColor
+            button?.image = Self.symbol("shield")
+            tint = nil
         case .armed:
             if triggered {
-                button?.image = NSImage(systemSymbolName: "shield.lefthalf.filled", accessibilityDescription: "defense fired")
-                button?.contentTintColor = .systemRed
+                button?.image = Self.symbol("shield.lefthalf.filled")
+                tint = .systemRed
             } else {
-                button?.image = NSImage(systemSymbolName: "shield.filled", accessibilityDescription: "armed")
-                button?.contentTintColor = .systemGreen
+                button?.image = Self.symbol("shield.fill")
+                tint = .systemGreen
             }
         }
-        button?.toolTip = "RAM Guard — \(posture == .armed ? "armed" : "observe")"
-    }
+        button?.contentTintColor = tint
 
-    private func refreshStaticItems() {
-        availMenuItem.title = String(format: "가용 RAM: %.0f MiB (임계 %.0f)", availableMiB, thresholdMiB)
-        postureMenuItem.title = posture == .observe ? "Armed로 전환 (실제 킬)" : "Observe로 전환 (기록만)"
-        thresholdHeaderItem.title = thresholdHeaderText()
-        refreshThresholdStates()
-        refreshLoginItemTitle()
-        refreshHistoryItems()
-    }
-
-    private func thresholdHeaderText() -> String {
-        // Show available next to the control + warn on a high threshold
-        // (no hard clamp — contract).
-        let base = "임계(가용 \(Int(availableMiB)) MiB)"
-        if thresholdMiB > availableMiB + 512 {
-            return base + " ⚠️ 임계가 가용보다 큼 — 방어가 곧바로 발동됩니다"
-        }
-        return base
-    }
-
-    private func refreshThresholdStates() {
-        guard let menu = item.menu else { return }
-        for m in menu.items where m.action == #selector(setThreshold(_:)) {
-            let value = m.representedObject as? Double ?? 0
-            m.state = abs(value - settings.thresholdMiB) < 0.5 ? .on : .off
-        }
-    }
-
-    private func refreshLoginItemTitle() {
-        switch LoginItemManager.status {
-        case .enabled:
-            loginItemMenuItem.title = "로그인 시 자동 시작: 켜짐"
-            loginItemMenuItem.state = .on
-        case .requiresApproval:
-            loginItemMenuItem.title = "로그인 시 자동 시작: 승인 필요 (시스템 설정)"
-            loginItemMenuItem.state = .mixed
-        case .notRegistered, .notFound:
-            loginItemMenuItem.title = "로그인 시 자동 시작: 꺼짐"
-            loginItemMenuItem.state = .off
-        @unknown default:
-            loginItemMenuItem.title = "로그인 시 자동 시작: 알 수 없음"
-            loginItemMenuItem.state = .off
-        }
-    }
-
-    private func refreshHistoryItems() {
-        let events = history.snapshot().prefix(historySectionItems.count)
-        for (index, menuItem) in historySectionItems.enumerated() {
-            if index < events.count {
-                let e = events[index]
-                menuItem.isHidden = false
-                menuItem.title = Self.format(e)
+        // Compact available-memory readout next to the icon (iStat/Stats
+        // convention). Native label color normally; band colors on warning.
+        if availableMiB > 0 {
+            let band = StatusLine.band(availableMiB: availableMiB, thresholdMiB: thresholdMiB,
+                                       swapHeadroomMiB: lastSwap?.headroomMiB, engineBreached: lastBreached,
+                                       swapFloorMiB: settings.swapHeadroomFloorMiB)
+            let color: NSColor
+            if triggered || band == .breached {
+                color = .systemRed
+            } else if band == .approaching {
+                color = .systemYellow
             } else {
-                menuItem.isHidden = true
+                color = .labelColor
+            }
+            let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+            // Combined usage (RAM used + swap used) — the pool the user thinks
+            // in; danger coloring still follows the engine band.
+            let used = max(Self.totalRamMiB - availableMiB, 0) + (lastSwap?.usedMiB ?? 0)
+            let text = " " + StatusLine.formatMemoryCompact(used)
+            button?.attributedTitle = NSAttributedString(string: text, attributes: [
+                .font: font,
+                .foregroundColor: color,
+            ])
+        } else {
+            button?.attributedTitle = NSAttributedString(string: "")
+        }
+        var tooltip = "RAM Guard — \(posture == .armed ? "방어" : "관찰") · 클릭해서 상태 보기"
+        if availableMiB > 0 {
+            let used = max(Self.totalRamMiB - availableMiB, 0) + (lastSwap?.usedMiB ?? 0)
+            let capacity = StatusLine.combinedCapacityMiB(totalMiB: Self.totalRamMiB, swap: lastSwap)
+            tooltip += "\n총 사용량 \(StatusLine.formatMemoryCompact(used)) / 한도 \(StatusLine.formatMemoryCompact(capacity))"
+            tooltip += "\nRAM 가용 \(StatusLine.formatMemory(availableMiB))"
+            if let remaining = StatusLine.totalAvailableMiB(availableMiB: availableMiB, swap: lastSwap) {
+                tooltip += " · 남음 \(StatusLine.formatMemory(remaining))"
             }
         }
-    }
-
-    static func format(_ e: HistoryEvent) -> String {
-        let time = e.timestamp
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        let rss = e.rssKiB.map { String(format: "%.1f GB", Double($0) / 1_048_576) } ?? "-"
-        let name = e.name ?? "-"
-        return "\(formatter.string(from: time)) [\(e.kind.rawValue)] \(name) \(rss)"
-    }
-
-    // MARK: - Actions
-
-    @objc private func togglePosture() {
-        settings.posture = settings.posture == .observe ? .armed : .observe
-        let posture = settings.posture
-        Log.policy.notice("posture -> \(posture.rawValue, privacy: .public)")
-        refreshStaticItems()
-        render()
-    }
-
-    @objc private func setThreshold(_ sender: NSMenuItem) {
-        guard let value = sender.representedObject as? Double else { return }
-        settings.thresholdMiB = value
-        Log.policy.notice("threshold -> \(Int(value)) MiB (effective next tick)")
-        refreshStaticItems()
-    }
-
-    @objc private func stepThreshold(_ sender: NSMenuItem) {
-        guard let delta = sender.representedObject as? Double else { return }
-        settings.thresholdMiB = settings.thresholdMiB + delta
-        let threshold = settings.thresholdMiB
-        Log.policy.notice("threshold -> \(Int(threshold)) MiB (effective next tick)")
-        refreshStaticItems()
-    }
-
-    @objc private func openExclusions() {
-        NSWorkspace.shared.open(ExclusionsStore.defaultPath)
-    }
-
-    @objc private func toggleLoginItem() {
-        do {
-            switch LoginItemManager.status {
-            case .enabled:
-                try LoginItemManager.unregister()
-            default:
-                try LoginItemManager.register()
-            }
-        } catch {
-            Log.ui.error("login item toggle failed: \(String(describing: error), privacy: .public)")
+        if let rate = lastSwapoutRate, rate >= StatusLine.swapIONoteFloorMiB {
+            tooltip += "\n스왑 I/O \(StatusLine.formatMemory(rate))/10초 ⚠️"
         }
-        refreshLoginItemTitle()
+        button?.toolTip = tooltip
     }
 
-    // MARK: - NSMenuDelegate (rebuild dynamic items when the menu opens)
+    private static func symbol(_ name: String) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil)
+            ?? NSImage(systemSymbolName: "shield", accessibilityDescription: nil)
+    }
 
-    nonisolated func menuNeedsUpdate(_ menu: NSMenu) {
+    // MARK: - Popover toggling
+
+    @objc private func togglePopover() {
+        guard let button = item.button else { return }
+        if popover.isShown {
+            popover.performClose(nil)
+            return
+        }
+        if let lastClosedAt, Date().timeIntervalSince(lastClosedAt) < 0.2 {
+            return
+        }
+        panel.prepareForOpen()
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+
+    nonisolated func popoverDidClose(_ notification: Notification) {
         Task { @MainActor in
-            self.refreshStaticItems()
+            self.lastClosedAt = Date()
         }
     }
 }

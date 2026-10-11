@@ -4,18 +4,18 @@ import Darwin
 /// beyond the current tick (low-footprint contract).
 struct ProcSnapshot: Equatable {
     let pid: pid_t
-    /// Resident size in KiB (`resident_size / 1024`, decimal-strict floor rule below).
-    let rssKiB: UInt64
+    /// Memory footprint in KiB (`phys_footprint / 1024`): resident + compressed
+    /// (+ IOKit) pages the process is accountable for — Activity Monitor's
+    /// "Memory" column. Unlike raw RSS this does NOT shrink when the kernel
+    /// compresses pages, so a big-but-cold process cannot escape the floor.
+    let footprintKiB: UInt64
     let uid: uid_t
     /// Executable path; nil when unresolvable (fail-safe: never a kill candidate).
     let path: String?
     /// Process name from pbi_comm.
     let name: String
 
-    /// Baseline parity: `ps -o rss` reports KiB, so KiB = resident_size / 1024
-    /// (integer division). The >1,000,000 KiB floor matches the validated
-    /// script's decimal FLOOR_KB=1000000 intentionally (documented decision).
-    static func rssKiB(fromResidentBytes bytes: UInt64) -> UInt64 {
+    static func footprintKiB(fromBytes bytes: UInt64) -> UInt64 {
         bytes / 1024
     }
 }
@@ -53,9 +53,14 @@ struct ProcessTable {
         let bsdSize = Int32(MemoryLayout<proc_bsdinfo>.size)
         guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bsdInfo, bsdSize) == bsdSize else { return nil }
 
-        var taskInfo = proc_taskinfo()
-        let taskSize = Int32(MemoryLayout<proc_taskinfo>.size)
-        guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskInfo, taskSize) == taskSize else { return nil }
+        // Footprint comes from proc_pid_rusage — this CLT SDK's proc_taskinfo
+        // predates the pti_phys_footprint field, and rusage carries it in
+        // every flavor. Same public syscall family, per-pid, no task port.
+        var rusage = rusage_info_current()
+        let rusageResult = withUnsafeMutablePointer(to: &rusage) { ptr -> Int32 in
+            proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, UnsafeMutableRawPointer(ptr).assumingMemoryBound(to: rusage_info_t?.self))
+        }
+        guard rusageResult == 0 else { return nil }
 
         var pathBuffer = [CChar](repeating: 0, count: Self.pathBufferSize)
         let pathLen = proc_pidpath(pid, &pathBuffer, UInt32(Self.pathBufferSize))
@@ -68,7 +73,7 @@ struct ProcessTable {
 
         return ProcSnapshot(
             pid: pid,
-            rssKiB: ProcSnapshot.rssKiB(fromResidentBytes: UInt64(taskInfo.pti_resident_size)),
+            footprintKiB: ProcSnapshot.footprintKiB(fromBytes: rusage.ri_phys_footprint),
             uid: bsdInfo.pbi_uid,
             path: path,
             name: name

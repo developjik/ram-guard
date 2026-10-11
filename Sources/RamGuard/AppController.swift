@@ -9,6 +9,8 @@ final class AppController: NSObject, NSApplicationDelegate {
     private let history = HistoryStore()
     private let engine: WatchdogEngine
     private let notifier = KillNotifier()
+    private let welcome = WelcomeWindowController()
+    private lazy var historyWindow = HistoryWindowController(store: history)
     private var statusItem: StatusItemController!
     private var triggeredUntil: Date?
     private var activity: NSObjectProtocol?
@@ -32,7 +34,8 @@ final class AppController: NSObject, NSApplicationDelegate {
                 ))
             },
             postureProvider: { settings.posture },
-            thresholdProvider: { settings.thresholdMiB }
+            thresholdProvider: { settings.thresholdMiB },
+            swapFloorProvider: { settings.swapHeadroomFloorMiB }
         )
         super.init()
     }
@@ -45,7 +48,9 @@ final class AppController: NSObject, NSApplicationDelegate {
             reason: "RAM Guard watchdog must keep its 10s poll cadence"
         )
 
-        statusItem = StatusItemController(settings: settings, history: history)
+        statusItem = StatusItemController(settings: settings, history: history, exclusions: exclusions)
+        statusItem.showWelcome = { [weak self] in self?.welcome.show() }
+        statusItem.showHistory = { [weak self] in self?.historyWindow.show() }
 
         // Single event sink: engine queue -> MainActor UI updates only.
         engine.onEvent = { [weak self] event in
@@ -55,6 +60,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         engine.start()
         notifier.requestAuthorization()
+        welcome.showIfNeeded()
         let postureValue = self.settings.posture.rawValue
         Log.ui.notice("app launched (posture=\(postureValue, privacy: .public), threshold=\(Int(self.settings.thresholdMiB)) MiB)")
     }
@@ -64,17 +70,18 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     private func handle(_ event: WatchdogEngine.Event) {
+        historyWindow.refresh()
         switch event {
-        case .tick(let available, let threshold):
+        case .tick(let available, let threshold, let swap, let swapout, let breached):
             statusItem.update(availableMiB: available, thresholdMiB: threshold, posture: settings.posture,
-                              triggered: triggeredUntil.map { Date() < $0 } ?? false)
+                              triggered: triggeredUntil.map { Date() < $0 } ?? false, swap: swap, swapoutMiBPerTick: swapout, breached: breached)
         case .wouldKill(let snap):
             statusItem.update(availableMiB: nil, thresholdMiB: settings.thresholdMiB, posture: .observe,
                               triggered: false, wouldKill: snap)
         case .killed(let snap):
             triggeredUntil = Date().addingTimeInterval(WatchdogEngine.pollInterval)
-            statusItem.update(availableMiB: nil, thresholdMiB: settings.thresholdMiB, posture: .armed, triggered: true)
-            notifier.notifyKill(name: snap.name, pid: snap.pid, rssKiB: snap.rssKiB, now: Date())
+            statusItem.update(availableMiB: nil, thresholdMiB: settings.thresholdMiB, posture: .armed, triggered: true, killed: snap)
+            notifier.notifyKill(name: snap.name, pid: snap.pid, footprintKiB: snap.footprintKiB, now: Date())
         case .cooldownSuppressed, .noCandidate, .killFailed, .readFailed:
             statusItem.refreshHistory()
         }

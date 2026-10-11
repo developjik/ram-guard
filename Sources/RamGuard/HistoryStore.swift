@@ -16,7 +16,7 @@ struct HistoryEvent: Equatable {
     let kind: Kind
     let pid: pid_t?
     let name: String?
-    let rssKiB: UInt64?
+    let footprintKiB: UInt64?
     let reason: String
     let timestamp: Date
 }

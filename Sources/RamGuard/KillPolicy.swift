@@ -2,8 +2,11 @@ import Foundation
 
 /// Kill-policy filter inputs. Everything here is contract-fixed.
 struct KillPolicyConfig {
-    /// RSS floor in KiB. Decimal 1,000,000 (baseline FLOOR_KB parity — intentional).
-    static let rssFloorKiB: UInt64 = 1_000_000
+    /// Memory floor in KiB, applied to `phys_footprint` (resident + compressed,
+    /// Activity Monitor's "Memory" column). Decimal 1,000,000 keeps the
+    /// baseline FLOOR_KB number; the metric changed from raw RSS to footprint
+    /// so a process the kernel has compressed cannot shrink below candidacy.
+    static let memoryFloorKiB: UInt64 = 1_000_000
     /// System path prefixes that are never candidates.
     static let systemPathPrefixes = ["/System/", "/usr/", "/bin/", "/sbin/"]
     /// Kernel task name (excluded even without a path).
@@ -25,7 +28,7 @@ struct KillPolicyConfig {
 /// Why a snapshot was rejected. Surfaced for logging/tests (AC-9 completeness).
 enum KillRejection: Equatable {
     case differentUser
-    case belowRssFloor
+    case belowMemoryFloor
     case systemPath
     case kernelTask
     case selfProcess
@@ -45,7 +48,7 @@ struct KillPolicy {
         for snap in snapshots {
             switch Self.reasonIfRejected(snap, config: config) {
             case .none:
-                if best == nil || snap.rssKiB > best!.rssKiB {
+                if best == nil || snap.footprintKiB > best!.footprintKiB {
                     best = snap
                 }
             case .some(let reason):
@@ -89,8 +92,8 @@ struct KillPolicy {
             }
         }
         // NOTE: decimal-strict floor. 1,000,000 KiB is excluded, 1,000,001 passes.
-        if snap.rssKiB <= KillPolicyConfig.rssFloorKiB {
-            return .belowRssFloor
+        if snap.footprintKiB <= KillPolicyConfig.memoryFloorKiB {
+            return .belowMemoryFloor
         }
         return nil
     }

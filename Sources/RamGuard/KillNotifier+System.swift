@@ -4,11 +4,16 @@ import UserNotifications
 /// Posts macOS system notifications for kills using the pure
 /// `NotificationCoalescer` (30s window, anchor = first kill). Authorization
 /// denial falls back to history-only (contract: 킬 이력은 항상 기록).
-final class KillNotifier {
+final class KillNotifier: NSObject, UNUserNotificationCenterDelegate {
     private let center = UNUserNotificationCenter.current()
     private let coalescer = NotificationCoalescer(window: 30)
     private var lock = NSLock()
     private var authorized = false
+
+    override init() {
+        super.init()
+        center.delegate = self
+    }
 
     func requestAuthorization() {
         center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
@@ -23,7 +28,7 @@ final class KillNotifier {
     }
 
     /// Must be called with the kill time; decides coalescing internally.
-    func notifyKill(name: String, pid: pid_t, rssKiB: UInt64, now: Date) {
+    func notifyKill(name: String, pid: pid_t, footprintKiB: UInt64, now: Date) {
         lock.lock()
         let shouldNotify = coalescer.shouldNotify(now: now, state: &coalescerStateStorage)
         if !shouldNotify {
@@ -38,12 +43,20 @@ final class KillNotifier {
             return
         }
         let content = UNMutableNotificationContent()
-        content.title = "RAM Guard: 프로세스 종료"
-        content.body = String(format: "%@ (pid %d, %.1f GB) — 가용 메모리 임계 이하", name, pid, Double(rssKiB) / 1_048_576)
+        content.title = StatusLine.notificationTitle
+        content.body = StatusLine.notificationBody(name: name, footprintKiB: footprintKiB)
         content.sound = .default
         let request = UNNotificationRequest(identifier: "ramguard.kill.\(now.timeIntervalSince1970)", content: content, trigger: nil)
         center.add(request)
     }
 
     private var coalescerStateStorage = NotificationCoalescer.State()
+
+    /// Present the banner even if the (accessory) app ends up frontmost.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
 }

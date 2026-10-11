@@ -14,6 +14,7 @@ func printUsage() {
       ramguard top [N]             print the N largest-RSS same-user processes
       ramguard selftest            run the built-in unit suite (M1 gate)
       ramguard watch [seconds]     run the observe-only engine for N seconds (default 30)
+      ramguard uitour [dir]        render the v3 UI offscreen to PNG artifacts (default: artifacts)
     """)
 }
 
@@ -31,8 +32,13 @@ switch subcommand {
 case "once":
     do {
         let m = try MemoryPressure.read()
-        print(String(format: "available=%.1f MiB (free=%llu speculative=%llu pageSize=%zu)",
-                     m.availableMiB, m.freePages, m.speculativePages, vm_page_size))
+        var line = String(format: "available=%.1f MiB (free=%llu speculative=%llu pageSize=%zu)",
+                          m.availableMiB, m.freePages, m.speculativePages, vm_page_size)
+        if let swap = m.swap {
+            line += String(format: " swap=%.0f/%.0fMB (%.0f%%) headroom=%.1fGB",
+                           swap.usedMiB, swap.totalMiB, swap.usedFraction * 100, swap.headroomMiB / 1024)
+        }
+        print(line)
     } catch {
         FileHandle.standardError.write("memory read failed: \(error)\n".data(using: .utf8)!)
         exit(1)
@@ -45,12 +51,12 @@ case "top":
     let uid = getuid()
     let procs = table.snapshotAll()
         .filter { $0.uid == uid && $0.path != nil }
-        .sorted { $0.rssKiB > $1.rssKiB }
+        .sorted { $0.footprintKiB > $1.footprintKiB }
         .prefix(limit)
-    print("PID      RSS_KiB    NAME")
+    print("PID      MEM_KiB    NAME")
     for p in procs {
         let pid = String(p.pid).padding(toLength: 9, withPad: " ", startingAt: 0)
-        let rss = String(p.rssKiB).padding(toLength: 11, withPad: " ", startingAt: 0)
+        let rss = String(p.footprintKiB).padding(toLength: 11, withPad: " ", startingAt: 0)
         print("\(pid)\(rss)\(p.name)")
     }
 case "watch":
@@ -77,12 +83,18 @@ case "watch":
     )
     engine.onEvent = { event in
         switch event {
-        case .tick(let available, let threshold):
-            print(String(format: "[tick] available=%.1f MiB (threshold=%.0f)", available, threshold))
+        case .tick(let available, let threshold, _, let swapout, let breached):
+            if breached {
+                print(String(format: "[tick] available=%.1f MiB (threshold=%.0f, swapout=%@) — BREACHED", available, threshold, swapout.map { String(format: "%.0f MiB/10s", $0) } ?? "n/a"))
+            } else if let swapout {
+                print(String(format: "[tick] available=%.1f MiB (threshold=%.0f, swapout=%.0f MiB/10s)", available, threshold, swapout))
+            } else {
+                print(String(format: "[tick] available=%.1f MiB (threshold=%.0f)", available, threshold))
+            }
         case .wouldKill(let snap):
-            print(String(format: "[observe] WOULD KILL %@ pid=%d rss=%lluKiB", snap.name, snap.pid, snap.rssKiB))
+            print(String(format: "[observe] WOULD KILL %@ pid=%d mem=%lluKiB", snap.name, snap.pid, snap.footprintKiB))
         case .killed(let snap):
-            print(String(format: "[armed] KILLED %@ pid=%d rss=%lluKiB", snap.name, snap.pid, snap.rssKiB))
+            print(String(format: "[armed] KILLED %@ pid=%d mem=%lluKiB", snap.name, snap.pid, snap.footprintKiB))
         case .killFailed(let pid, let name, let kr):
             print(String(format: "[armed] kill failed %@ pid=%d kr=%d", name, pid, kr))
         case .cooldownSuppressed(let snap, let remaining):
@@ -115,6 +127,11 @@ case "loginitem":
 case "app":
     MainActor.assumeIsolated {
         runApp()
+    }
+case "uitour":
+    let outDir = arguments.count > 1 ? arguments[1] : "artifacts"
+    MainActor.assumeIsolated {
+        UITour.run(outputDirectory: URL(fileURLWithPath: outDir, isDirectory: true))
     }
 default:
     printUsage()
